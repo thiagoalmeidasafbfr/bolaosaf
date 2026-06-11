@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entrar - Bolao Copa 2026</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <h1>Bolao 2026</h1>
+        <p>Copa do Mundo FIFA</p>
+      </div>
+
+      {% if error %}
+      <div class="auth-error">{{ error }}</div>
+      {% endif %}
+
+      <form method="POST" action="{{ url_for('login_page') }}">
+        <div class="form-group">
+          <label class="form-label" for="email">E-mail</label>
+          <input class="form-input" type="email" id="email" name="email" required autofocus>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="password">Senha</label>
+          <input class="form-input" type="password" id="password" name="password" required>
+        </div>
+        <button type="submit" class="btn btn-dark" style="width:100%;margin-top:8px;">Entrar</button>
+      </form>
+
+      <div class="auth-footer">
+        Nao tem conta? <a href="{{ url_for('register_page') }}">Cadastre-se</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

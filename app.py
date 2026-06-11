@@ -1,24 +1,61 @@
+import os
 from datetime import datetime, timedelta, timezone
+from functools import wraps
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, g
+from werkzeug.security import generate_password_hash, check_password_hash
 from database import get_db, init_db
 from scoring import calculate_points, BONUS_POINTS, STAGE_LABELS, STAGE_ORDER
 from seed_data import seed, force_reseed
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "bolao-copa-2026-mude-esta-chave")
 
 BRT = timezone(timedelta(hours=-3))
-
 _db_ready = False
 
 
 @app.before_request
-def ensure_db():
+def before():
     global _db_ready
     if not _db_ready:
         init_db()
         seed()
         _db_ready = True
+
+    g.user = None
+    uid = session.get("user_id")
+    if uid:
+        conn = get_db()
+        g.user = conn.execute("SELECT id, name, email, is_approved, is_admin FROM users WHERE id = %s", (uid,)).fetchone()
+        conn.close()
+
+
+@app.context_processor
+def inject_user():
+    return {"current_user": g.user}
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not g.user:
+            return redirect(url_for("login_page"))
+        if not g.user["is_approved"]:
+            return redirect(url_for("pending_page"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not g.user:
+            return redirect(url_for("login_page"))
+        if not g.user["is_admin"]:
+            return redirect(url_for("index"))
+        return f(*args, **kwargs)
+    return decorated
 
 
 def now_brt():
@@ -43,10 +80,80 @@ def get_active_stages(conn):
     return sorted(stages, key=lambda s: STAGE_ORDER.index(s) if s in STAGE_ORDER else 99)
 
 
+# --- AUTH PAGES ---
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login_page():
+    if g.user:
+        return redirect(url_for("index"))
+    error = None
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        conn = get_db()
+        user = conn.execute("SELECT * FROM users WHERE email = %s", (email,)).fetchone()
+        conn.close()
+        if user and check_password_hash(user["password_hash"], password):
+            session["user_id"] = user["id"]
+            if not user["is_approved"]:
+                return redirect(url_for("pending_page"))
+            return redirect(url_for("index"))
+        error = "E-mail ou senha incorretos."
+    return render_template("login.html", error=error)
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register_page():
+    if g.user:
+        return redirect(url_for("index"))
+    error = None
+    success = False
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        if not name or not email or not password:
+            error = "Preencha todos os campos."
+        elif len(password) < 4:
+            error = "Senha deve ter pelo menos 4 caracteres."
+        else:
+            conn = get_db()
+            existing = conn.execute("SELECT id FROM users WHERE email = %s", (email,)).fetchone()
+            if existing:
+                conn.close()
+                error = "Este e-mail ja esta cadastrado."
+            else:
+                conn.execute(
+                    "INSERT INTO users (name, email, password_hash, is_approved, is_admin) VALUES (%s, %s, %s, 0, 0)",
+                    (name, email, generate_password_hash(password)),
+                )
+                conn.commit()
+                conn.close()
+                success = True
+    return render_template("register.html", error=error, success=success)
+
+
+@app.route("/pending")
+def pending_page():
+    if not g.user:
+        return redirect(url_for("login_page"))
+    if g.user["is_approved"]:
+        return redirect(url_for("index"))
+    return render_template("pending.html")
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login_page"))
+
+
 # --- PAGES ---
 
 
 @app.route("/")
+@login_required
 def index():
     conn = get_db()
     stage_filter = request.args.get("stage", "")
@@ -83,15 +190,12 @@ def index():
 
 
 @app.route("/matches")
+@login_required
 def matches_page():
     conn = get_db()
-    user_id = request.args.get("user_id", type=int)
+    user_id = g.user["id"]
     stage_filter = request.args.get("stage", "group")
     active_stages = get_active_stages(conn)
-
-    users = conn.execute(
-        "SELECT * FROM users WHERE is_approved = 1 ORDER BY name"
-    ).fetchall()
 
     rows = conn.execute("""
         SELECT m.id, m.match_date, m.match_time, m.stage, m.group_name,
@@ -111,40 +215,36 @@ def matches_page():
             locked_ids.add(m["id"])
 
     predictions = {}
-    if user_id:
-        preds = conn.execute(
-            "SELECT match_id, home_score, away_score, points_earned FROM predictions WHERE user_id = %s",
-            (user_id,),
-        ).fetchall()
-        for p in preds:
-            predictions[p["match_id"]] = p
+    preds = conn.execute(
+        "SELECT match_id, home_score, away_score, points_earned FROM predictions WHERE user_id = %s",
+        (user_id,),
+    ).fetchall()
+    for p in preds:
+        predictions[p["match_id"]] = p
 
     conn.close()
     return render_template(
-        "matches.html", matches=rows, users=users, user_id=user_id,
+        "matches.html", matches=rows, user_id=user_id,
         predictions=predictions, locked_ids=locked_ids,
         active_stages=active_stages, stage_filter=stage_filter,
-        stage_labels=STAGE_LABELS, now=now_brt(),
+        stage_labels=STAGE_LABELS,
     )
 
 
 @app.route("/bonus")
+@login_required
 def bonus_page():
     conn = get_db()
-    user_id = request.args.get("user_id", type=int)
-    users = conn.execute(
-        "SELECT * FROM users WHERE is_approved = 1 ORDER BY name"
-    ).fetchall()
+    user_id = g.user["id"]
     teams = conn.execute("SELECT * FROM teams ORDER BY name").fetchall()
 
     bonus_preds = {}
-    if user_id:
-        rows = conn.execute(
-            "SELECT category, value, points_earned FROM bonus_predictions WHERE user_id = %s",
-            (user_id,),
-        ).fetchall()
-        for r in rows:
-            bonus_preds[r["category"]] = r
+    rows = conn.execute(
+        "SELECT category, value, points_earned FROM bonus_predictions WHERE user_id = %s",
+        (user_id,),
+    ).fetchall()
+    for r in rows:
+        bonus_preds[r["category"]] = r
 
     results = {}
     for r in conn.execute("SELECT category, value FROM bonus_results").fetchall():
@@ -152,12 +252,13 @@ def bonus_page():
 
     conn.close()
     return render_template(
-        "bonus.html", users=users, teams=teams, user_id=user_id,
+        "bonus.html", teams=teams, user_id=user_id,
         bonus_preds=bonus_preds, results=results,
     )
 
 
 @app.route("/admin")
+@admin_required
 def admin():
     conn = get_db()
     stage_filter = request.args.get("stage", "group")
@@ -199,24 +300,8 @@ def admin():
 # --- API ---
 
 
-@app.route("/api/register", methods=["POST"])
-def register():
-    data = request.get_json() or request.form
-    name = data.get("name", "").strip()
-    if not name:
-        return jsonify({"error": "Nome eh obrigatorio"}), 400
-    conn = get_db()
-    try:
-        conn.execute("INSERT INTO users (name, is_approved) VALUES (%s, 0)", (name,))
-        conn.commit()
-    except Exception:
-        conn.close()
-        return jsonify({"error": "Nome ja existe"}), 409
-    conn.close()
-    return jsonify({"ok": True, "message": "Cadastro enviado! Aguarde aprovacao do administrador."})
-
-
 @app.route("/api/admin/approve_user", methods=["POST"])
+@admin_required
 def approve_user():
     data = request.get_json() or request.form
     user_id = int(data["user_id"])
@@ -228,6 +313,7 @@ def approve_user():
 
 
 @app.route("/api/admin/reject_user", methods=["POST"])
+@admin_required
 def reject_user():
     data = request.get_json() or request.form
     user_id = int(data["user_id"])
@@ -239,17 +325,19 @@ def reject_user():
 
 
 @app.route("/api/admin/reseed", methods=["POST"])
+@admin_required
 def reseed():
     global _db_ready
     force_reseed()
     _db_ready = True
-    return jsonify({"ok": True, "message": "Dados recriados com sucesso."})
+    return jsonify({"ok": True})
 
 
 @app.route("/api/predict", methods=["POST"])
+@login_required
 def predict():
     data = request.get_json() or request.form
-    user_id = int(data["user_id"])
+    user_id = g.user["id"]
     match_id = int(data["match_id"])
     home_score = int(data["home_score"])
     away_score = int(data["away_score"])
@@ -258,12 +346,6 @@ def predict():
         return jsonify({"error": "Placar nao pode ser negativo"}), 400
 
     conn = get_db()
-
-    user = conn.execute("SELECT is_approved FROM users WHERE id = %s", (user_id,)).fetchone()
-    if not user or not user["is_approved"]:
-        conn.close()
-        return jsonify({"error": "Usuario nao aprovado"}), 403
-
     match = conn.execute(
         "SELECT is_finished, match_date, match_time FROM matches WHERE id = %s", (match_id,)
     ).fetchone()
@@ -289,9 +371,10 @@ def predict():
 
 
 @app.route("/api/bonus_predict", methods=["POST"])
+@login_required
 def bonus_predict():
     data = request.get_json() or request.form
-    user_id = int(data["user_id"])
+    user_id = g.user["id"]
     category = data["category"]
     value = data["value"].strip()
 
@@ -299,11 +382,6 @@ def bonus_predict():
         return jsonify({"error": "Categoria invalida"}), 400
 
     conn = get_db()
-    user = conn.execute("SELECT is_approved FROM users WHERE id = %s", (user_id,)).fetchone()
-    if not user or not user["is_approved"]:
-        conn.close()
-        return jsonify({"error": "Usuario nao aprovado"}), 403
-
     conn.execute("""
         INSERT INTO bonus_predictions (user_id, category, value)
         VALUES (%s, %s, %s)
@@ -316,6 +394,7 @@ def bonus_predict():
 
 
 @app.route("/api/admin/result", methods=["POST"])
+@admin_required
 def set_result():
     data = request.get_json() or request.form
     match_id = int(data["match_id"])
@@ -347,6 +426,7 @@ def set_result():
 
 
 @app.route("/api/admin/bonus_result", methods=["POST"])
+@admin_required
 def set_bonus_result():
     data = request.get_json() or request.form
     category = data["category"]
@@ -375,6 +455,7 @@ def set_bonus_result():
 
 
 @app.route("/api/admin/add_match", methods=["POST"])
+@admin_required
 def add_match():
     data = request.get_json() or request.form
     conn = get_db()

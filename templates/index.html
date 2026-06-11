@@ -1,81 +1,74 @@
 {% extends "base.html" %}
+{% block title %}Ranking - Bolao Copa 2026{% endblock %}
 {% block content %}
-<div class="container">
-    <h1>&#127942; Ranking do Bolao</h1>
+<div class="page-hero">
+  <h1>Ranking</h1>
+  <div class="hero-sub">BOLAO COPA DO MUNDO FIFA 2026</div>
+</div>
 
-    <div class="card register-card">
-        <h3>Novo Participante</h3>
-        <form id="register-form" class="inline-form">
-            <input type="text" id="reg-name" placeholder="Nome do participante" required>
-            <button type="submit">Solicitar Entrada</button>
-        </form>
-        <p id="reg-msg" class="msg"></p>
-    </div>
+<div class="content-area">
+  <div class="stage-tabs">
+    <a href="/" class="stage-tab {% if not stage_filter %}active{% endif %}">Geral</a>
+    {% for s in active_stages %}
+    <a href="/?stage={{ s }}" class="stage-tab {% if stage_filter == s %}active{% endif %}">
+      {{ stage_labels.get(s, s) }}
+    </a>
+    {% endfor %}
+  </div>
 
-    <div class="stage-tabs">
-        <a href="/" class="tab {% if not stage_filter %}active{% endif %}">Geral</a>
-        {% for s in active_stages %}
-        <a href="/?stage={{ s }}" class="tab {% if stage_filter == s %}active{% endif %}">
-            {{ stage_labels.get(s, s) }}
-        </a>
+  <div class="card">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width:48px">Pos</th>
+          <th>Participante</th>
+          <th>Pontos</th>
+          <th>Apostas</th>
+          <th>Exatos</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in ranking %}
+        <tr>
+          <td class="num {% if loop.index == 1 %}rank-1{% elif loop.index == 2 %}rank-2{% elif loop.index == 3 %}rank-3{% endif %}">{{ loop.index }}</td>
+          <td>{{ r.name }}</td>
+          <td class="num" style="font-weight:600;">{{ r.total_points }}</td>
+          <td class="num">{{ r.total_preds }}</td>
+          <td class="num">{{ r.exact_hits or 0 }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" style="text-align:center;color:var(--ink-secondary);padding:24px;">Nenhum participante aprovado ainda.</td></tr>
         {% endfor %}
-    </div>
+      </tbody>
+    </table>
+  </div>
 
-    <div class="card">
-        <table>
-            <thead>
-                <tr>
-                    <th>Pos</th>
-                    <th>Participante</th>
-                    <th>Pontos</th>
-                    <th>Apostas</th>
-                    <th>Placares Exatos</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for r in ranking %}
-                <tr class="{% if loop.index == 1 %}gold{% elif loop.index == 2 %}silver{% elif loop.index == 3 %}bronze{% endif %}">
-                    <td class="pos">{{ loop.index }}o</td>
-                    <td>{{ r.name }}</td>
-                    <td class="points">{{ r.total_points }}</td>
-                    <td>{{ r.total_preds }}</td>
-                    <td>{{ r.exact_hits or 0 }}</td>
-                </tr>
-                {% else %}
-                <tr><td colspan="5" class="empty">Nenhum participante aprovado ainda.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+  <div class="card">
+    <div class="card-title">Criterios de Pontuacao</div>
+    <div class="rules-grid">
+      <div class="rule">
+        <span class="rule-pts">25 pts</span>
+        <span class="rule-text">Placar exato</span>
+      </div>
+      <div class="rule">
+        <span class="rule-pts">18 pts</span>
+        <span class="rule-text">Parcial (1 placar + vencedor)</span>
+      </div>
+      <div class="rule">
+        <span class="rule-pts">15 pts</span>
+        <span class="rule-text">Resultado + saldo de gols</span>
+      </div>
+      <div class="rule">
+        <span class="rule-pts">10 pts</span>
+        <span class="rule-text">Apenas o resultado (V/E/D)</span>
+      </div>
     </div>
-
-    <div class="card scoring-rules">
-        <h3>Criterios de Pontuacao</h3>
-        <div class="rules-grid">
-            <div class="rule">
-                <span class="rule-pts">25 pts</span>
-                <span>Placar exato</span>
-            </div>
-            <div class="rule">
-                <span class="rule-pts">18 pts</span>
-                <span>Parcial (acertou gols de 1 time + vencedor)</span>
-            </div>
-            <div class="rule">
-                <span class="rule-pts">15 pts</span>
-                <span>Resultado + saldo de gols</span>
-            </div>
-            <div class="rule">
-                <span class="rule-pts">10 pts</span>
-                <span>Apenas o resultado (V/E/D)</span>
-            </div>
-        </div>
-        <p class="multiplier-info">
-            <strong>Multiplicadores:</strong>
-            Oitavas x1.5 | Quartas x2 | Semi x2.5 | Final x3
-        </p>
-        <p class="multiplier-info">
-            <strong>Bonus:</strong>
-            Campeao 50pts | Vice 30pts | Artilheiro 20pts | Surpresa nas Quartas 15pts
-        </p>
-    </div>
+    <p class="multiplier-info">
+      <strong>Multiplicadores:</strong> Oitavas x1.5 &middot; Quartas x2 &middot; Semi x2.5 &middot; Final x3
+    </p>
+    <p class="multiplier-info">
+      <strong>Bonus:</strong> Campeao 50pts &middot; Vice 30pts &middot; Artilheiro 20pts &middot; Surpresa nas Quartas 15pts
+    </p>
+  </div>
 </div>
 {% endblock %}

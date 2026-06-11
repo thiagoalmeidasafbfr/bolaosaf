@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aguardando Aprovacao - Bolao Copa 2026</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="pending-page">
+    <div class="pending-card">
+      <div class="pending-icon">&#9203;</div>
+      <h2>Aguardando Aprovacao</h2>
+      <p>Seu cadastro foi recebido! O administrador precisa aprovar sua entrada antes de voce poder fazer seus palpites.</p>
+      <p style="margin-top:16px;">
+        <a href="{{ url_for('logout') }}" class="btn btn-ghost" style="margin-top:12px;">Sair</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

@@ -24,30 +24,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // --- REGISTRO ---
-    const regForm = document.getElementById("register-form");
-    if (regForm) {
-        regForm.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            const name = document.getElementById("reg-name").value.trim();
-            const msg = document.getElementById("reg-msg");
-            const res = await fetch("/api/register", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name }),
-            });
-            const data = await res.json();
-            if (res.ok) {
-                msg.textContent = data.message || "Cadastro enviado! Aguarde aprovacao.";
-                msg.className = "msg success";
-                document.getElementById("reg-name").value = "";
-            } else {
-                msg.textContent = data.error || "Erro ao cadastrar";
-                msg.className = "msg error";
-            }
-        });
-    }
-
     // --- APROVACAO / REJEICAO ---
     document.querySelectorAll(".btn-approve").forEach((btn) => {
         btn.addEventListener("click", async () => {
@@ -78,9 +54,6 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".predict-form").forEach((form) => {
         form.addEventListener("submit", async (e) => {
             e.preventDefault();
-            const params = new URLSearchParams(window.location.search);
-            const userId = params.get("user_id");
-            if (!userId) return alert("Selecione seu nome primeiro!");
             const matchId = form.dataset.match;
             const homeScore = form.querySelector('[name="home_score"]').value;
             const awayScore = form.querySelector('[name="away_score"]').value;
@@ -88,7 +61,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    user_id: userId,
                     match_id: matchId,
                     home_score: homeScore,
                     away_score: awayScore,
@@ -109,15 +81,12 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".bonus-form").forEach((form) => {
         form.addEventListener("submit", async (e) => {
             e.preventDefault();
-            const params = new URLSearchParams(window.location.search);
-            const userId = params.get("user_id");
-            if (!userId) return;
             const category = form.dataset.category;
             const value = form.querySelector('[name="value"]').value;
             const res = await fetch("/api/bonus_predict", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ user_id: userId, category, value }),
+                body: JSON.stringify({ category, value }),
             });
             if (res.ok) {
                 const btn = form.querySelector("button");

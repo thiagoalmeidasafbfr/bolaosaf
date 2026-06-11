@@ -1,94 +1,80 @@
 {% extends "base.html" %}
+{% block title %}Jogos - Bolao Copa 2026{% endblock %}
 {% block content %}
-<div class="container">
-    <h1>&#128203; Jogos da Copa 2026</h1>
+<div class="page-hero">
+  <h1>Jogos</h1>
+  <div class="hero-sub">{{ stage_labels.get(stage_filter, stage_filter)|upper }}</div>
+</div>
 
-    <div class="stage-tabs">
-        {% for s in active_stages %}
-        <a href="/matches?stage={{ s }}{% if user_id %}&user_id={{ user_id }}{% endif %}"
-           class="tab {% if stage_filter == s %}active{% endif %}">
-            {{ stage_labels.get(s, s) }}
-        </a>
-        {% endfor %}
-    </div>
+<div class="content-area">
+  <div class="stage-tabs">
+    {% for s in active_stages %}
+    <a href="/matches?stage={{ s }}" class="stage-tab {% if stage_filter == s %}active{% endif %}">
+      {{ stage_labels.get(s, s) }}
+    </a>
+    {% endfor %}
+  </div>
 
-    <div class="card">
-        <form class="inline-form" method="GET" action="/matches">
-            <input type="hidden" name="stage" value="{{ stage_filter }}">
-            <label>Apostar como:</label>
-            <select name="user_id" onchange="this.form.submit()">
-                <option value="">-- Selecione --</option>
-                {% for u in users %}
-                <option value="{{ u.id }}" {% if user_id == u.id %}selected{% endif %}>{{ u.name }}</option>
-                {% endfor %}
-            </select>
-        </form>
-    </div>
+  {% if not matches %}
+  <div class="card" style="text-align:center;padding:32px;">
+    <p style="color:var(--ink-secondary);">Nenhum jogo cadastrado para esta fase ainda.</p>
+  </div>
+  {% endif %}
 
-    {% if not matches %}
-        <div class="card">
-            <p class="empty">Nenhum jogo cadastrado para esta fase ainda. O administrador adicionara os jogos em breve.</p>
-        </div>
+  {% set current_group = namespace(val='') %}
+  {% for m in matches %}
+    {% if m.group_name and m.group_name != current_group.val and stage_filter == 'group' %}
+      {% set current_group.val = m.group_name %}
+      <div class="group-divider">Grupo {{ m.group_name }}</div>
     {% endif %}
 
-    {% set current_group = namespace(val='') %}
-    {% for m in matches %}
-        {% if m.group_name and m.group_name != current_group.val and stage_filter == 'group' %}
-            {% if current_group.val != '' %}</div>{% endif %}
-            {% set current_group.val = m.group_name %}
-            <h2 class="group-header">Grupo {{ m.group_name }}</h2>
-            <div class="matches-group">
-        {% elif loop.first %}
-            <div class="matches-group">
+    {% set locked = m.id in locked_ids %}
+    <div class="match-card {% if locked and not m.is_finished %}locked{% endif %}">
+      <div class="match-header">
+        <span class="match-meta">{{ m.match_date }} &middot; {{ m.match_time }}</span>
+        {% if m.is_finished %}
+          <span class="chip chip-pos">Encerrado</span>
+        {% elif locked %}
+          <span class="chip chip-neg">Fechado</span>
+        {% else %}
+          <span class="chip chip-gold">Aberto</span>
         {% endif %}
+      </div>
+      <div class="match-teams">
+        <span class="team home"><span class="flag">{{ m.home_flag }}</span> {{ m.home_team }}</span>
+        {% if m.is_finished %}
+          <span class="match-score">{{ m.home_score }} <span class="x">x</span> {{ m.away_score }}</span>
+        {% else %}
+          <span class="vs">VS</span>
+        {% endif %}
+        <span class="team away">{{ m.away_team }} <span class="flag">{{ m.away_flag }}</span></span>
+      </div>
 
-        {% set locked = m.id in locked_ids %}
-        <div class="match-card {% if m.is_finished %}finished{% elif locked %}locked{% endif %}">
-            <div class="match-date">
-                {{ m.match_date }} {{ m.match_time }}
-                {% if locked and not m.is_finished %}
-                    <span class="lock-badge">&#128274; Apostas encerradas</span>
-                {% elif not m.is_finished %}
-                    <span class="open-badge">&#128275; Aberto</span>
-                {% endif %}
-            </div>
-            <div class="match-teams">
-                <span class="team home">{{ m.home_flag }} {{ m.home_team }}</span>
-                {% if m.is_finished %}
-                    <span class="score final">{{ m.home_score }} x {{ m.away_score }}</span>
-                {% else %}
-                    <span class="score pending">vs</span>
-                {% endif %}
-                <span class="team away">{{ m.away_team }} {{ m.away_flag }}</span>
-            </div>
-
-            {% if user_id %}
-                {% set pred = predictions.get(m.id) %}
-                {% if m.is_finished and pred %}
-                    <div class="prediction-result">
-                        Sua aposta: {{ pred.home_score }} x {{ pred.away_score }}
-                        &mdash; <strong class="pts-earned">{{ pred.points_earned or 0 }} pts</strong>
-                    </div>
-                {% elif m.is_finished and not pred %}
-                    <div class="prediction-result missed">Voce nao apostou neste jogo</div>
-                {% elif locked and pred %}
-                    <div class="prediction-result">
-                        Sua aposta: {{ pred.home_score }} x {{ pred.away_score }} &#128274;
-                    </div>
-                {% elif locked and not pred %}
-                    <div class="prediction-result missed">Apostas encerradas - voce nao apostou</div>
-                {% else %}
-                    <form class="predict-form" data-match="{{ m.id }}">
-                        <input type="number" name="home_score" min="0" max="20" value="{{ pred.home_score if pred else '' }}" placeholder="0" required>
-                        <span>x</span>
-                        <input type="number" name="away_score" min="0" max="20" value="{{ pred.away_score if pred else '' }}" placeholder="0" required>
-                        <button type="submit">{% if pred %}Atualizar{% else %}Apostar{% endif %}</button>
-                    </form>
-                {% endif %}
-            {% endif %}
+      {% set pred = predictions.get(m.id) %}
+      {% if m.is_finished and pred %}
+        <div class="prediction-result">
+          Seu palpite: <strong>{{ pred.home_score }} x {{ pred.away_score }}</strong>
+          &mdash; <strong class="pts-earned">{{ pred.points_earned or 0 }} pts</strong>
         </div>
-
-        {% if loop.last %}</div>{% endif %}
-    {% endfor %}
+      {% elif m.is_finished and not pred %}
+        <div class="prediction-result missed">Voce nao apostou neste jogo</div>
+      {% elif locked and pred %}
+        <div class="prediction-result">
+          Seu palpite: <strong>{{ pred.home_score }} x {{ pred.away_score }}</strong>
+        </div>
+      {% elif locked and not pred %}
+        <div class="prediction-result missed">Apostas encerradas - voce nao apostou</div>
+      {% else %}
+        <div class="match-predict">
+          <form class="predict-form" data-match="{{ m.id }}" style="display:flex;align-items:center;gap:8px;">
+            <input type="number" name="home_score" min="0" max="20" class="form-input-sm" value="{{ pred.home_score if pred else '' }}" placeholder="0" required>
+            <span class="vs">x</span>
+            <input type="number" name="away_score" min="0" max="20" class="form-input-sm" value="{{ pred.away_score if pred else '' }}" placeholder="0" required>
+            <button type="submit" class="btn btn-primary btn-sm">{% if pred %}Atualizar{% else %}Apostar{% endif %}</button>
+          </form>
+        </div>
+      {% endif %}
+    </div>
+  {% endfor %}
 </div>
 {% endblock %}

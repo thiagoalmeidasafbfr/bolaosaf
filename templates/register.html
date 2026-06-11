@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cadastro - Bolao Copa 2026</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <h1>Bolao 2026</h1>
+        <p>Copa do Mundo FIFA</p>
+      </div>
+
+      {% if error %}
+      <div class="auth-error">{{ error }}</div>
+      {% endif %}
+
+      {% if success %}
+      <div class="auth-success">Cadastro realizado! Aguarde a aprovacao do administrador.</div>
+      {% endif %}
+
+      {% if not success %}
+      <form method="POST" action="{{ url_for('register_page') }}">
+        <div class="form-group">
+          <label class="form-label" for="name">Nome</label>
+          <input class="form-input" type="text" id="name" name="name" required autofocus>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="email">E-mail</label>
+          <input class="form-input" type="email" id="email" name="email" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="password">Senha</label>
+          <input class="form-input" type="password" id="password" name="password" required minlength="4">
+        </div>
+        <button type="submit" class="btn btn-dark" style="width:100%;margin-top:8px;">Cadastrar</button>
+      </form>
+      {% endif %}
+
+      <div class="auth-footer">
+        Ja tem conta? <a href="{{ url_for('login_page') }}">Entrar</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

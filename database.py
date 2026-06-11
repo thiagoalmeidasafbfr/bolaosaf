@@ -32,8 +32,11 @@ def init_db():
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
-            name TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
             is_approved INTEGER DEFAULT 0,
+            is_admin INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -88,5 +91,16 @@ def init_db():
             value TEXT NOT NULL
         )
     """)
+
+    existing_cols = [r["column_name"] for r in conn.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'users'"
+    ).fetchall()]
+    if "email" not in existing_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN email TEXT DEFAULT '' NOT NULL")
+    if "password_hash" not in existing_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT '' NOT NULL")
+    if "is_admin" not in existing_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
+
     conn.commit()
     conn.close()

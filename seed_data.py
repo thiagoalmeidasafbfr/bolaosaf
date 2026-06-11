@@ -1,3 +1,4 @@
+from werkzeug.security import generate_password_hash
 from database import get_db, init_db
 
 GROUPS = {
@@ -183,6 +184,14 @@ def seed():
     if existing > 0:
         conn.close()
         return
+
+    admin_exists = conn.execute("SELECT COUNT(*) AS cnt FROM users WHERE is_admin = 1").fetchone()["cnt"]
+    if admin_exists == 0:
+        conn.execute(
+            "INSERT INTO users (name, email, password_hash, is_approved, is_admin) VALUES (%s, %s, %s, 1, 1)",
+            ("Admin", "admin@bolao.com", generate_password_hash("bolao2026")),
+        )
+        conn.commit()
 
     for group_name, teams in GROUPS.items():
         for team_name, flag in teams:

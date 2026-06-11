@@ -1,26 +1,52 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bolao Copa 2026 - SAF</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Bolao Copa 2026{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <nav>
-        <div class="nav-container">
-            <a href="/" class="logo">&#9917; Bolao Copa 2026</a>
-            <div class="nav-links">
-                <a href="/">Ranking</a>
-                <a href="/matches">Jogos</a>
-                <a href="/bonus">Bonus</a>
-                <a href="/admin">Admin</a>
-            </div>
-        </div>
-    </nav>
-    <main>
-        {% block content %}{% endblock %}
-    </main>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+  <div class="mobile-header">
+    <span class="brand">Bolao 2026</span>
+    <button class="mobile-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open');document.querySelector('.sidebar-overlay').classList.toggle('open')">&#9776;</button>
+  </div>
+  <div class="sidebar-overlay" onclick="document.querySelector('.sidebar').classList.remove('open');this.classList.remove('open')"></div>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-brand">Bolao 2026</div>
+      <div class="sidebar-section">Menu</div>
+      <ul class="sidebar-nav">
+        <li><a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">
+          <span class="nav-icon">&#127942;</span> Ranking
+        </a></li>
+        <li><a href="{{ url_for('matches_page') }}" class="{% if request.endpoint == 'matches_page' %}active{% endif %}">
+          <span class="nav-icon">&#9917;</span> Jogos
+        </a></li>
+        <li><a href="{{ url_for('bonus_page') }}" class="{% if request.endpoint == 'bonus_page' %}active{% endif %}">
+          <span class="nav-icon">&#11088;</span> Bonus
+        </a></li>
+        {% if current_user and current_user.is_admin %}
+        <li><a href="{{ url_for('admin') }}" class="{% if request.endpoint == 'admin' %}active{% endif %}">
+          <span class="nav-icon">&#9881;</span> Admin
+        </a></li>
+        {% endif %}
+      </ul>
+      <div class="sidebar-footer">
+        {% if current_user %}
+        <div class="user-name">{{ current_user.name }}</div>
+        <div class="user-email">{{ current_user.email }}</div>
+        <a href="{{ url_for('logout') }}">Sair</a>
+        {% endif %}
+      </div>
+    </aside>
+
+    <div class="main-content">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
