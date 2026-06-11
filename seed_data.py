@@ -180,11 +180,6 @@ def seed():
     init_db()
     conn = get_db()
 
-    existing = conn.execute("SELECT COUNT(*) AS cnt FROM teams").fetchone()["cnt"]
-    if existing > 0:
-        conn.close()
-        return
-
     admin_exists = conn.execute("SELECT COUNT(*) AS cnt FROM users WHERE is_admin = 1").fetchone()["cnt"]
     if admin_exists == 0:
         conn.execute(
@@ -192,6 +187,11 @@ def seed():
             ("Admin", "admin@bolao.com", generate_password_hash("bolao2026")),
         )
         conn.commit()
+
+    existing = conn.execute("SELECT COUNT(*) AS cnt FROM teams").fetchone()["cnt"]
+    if existing > 0:
+        conn.close()
+        return
 
     for group_name, teams in GROUPS.items():
         for team_name, flag in teams:

@@ -93,7 +93,7 @@ def init_db():
     """)
 
     existing_cols = [r["column_name"] for r in conn.execute(
-        "SELECT column_name FROM information_schema.columns WHERE table_name = 'users'"
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'users' AND table_schema = 'public'"
     ).fetchall()]
     if "email" not in existing_cols:
         conn.execute("ALTER TABLE users ADD COLUMN email TEXT DEFAULT '' NOT NULL")

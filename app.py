@@ -1,4 +1,5 @@
 import os
+import traceback
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
@@ -10,6 +11,12 @@ from seed_data import seed, force_reseed
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "bolao-copa-2026-mude-esta-chave")
+
+
+@app.errorhandler(Exception)
+def handle_error(e):
+    tb = traceback.format_exc()
+    return f"<h1>Erro</h1><pre>{tb}</pre>", 500
 
 BRT = timezone(timedelta(hours=-3))
 _db_ready = False
