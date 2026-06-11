@@ -9,10 +9,16 @@ app = Flask(__name__)
 
 BRT = timezone(timedelta(hours=-3))
 
+_db_ready = False
+
 
 @app.before_request
 def ensure_db():
-    init_db()
+    global _db_ready
+    if not _db_ready:
+        init_db()
+        seed()
+        _db_ready = True
 
 
 def now_brt():
@@ -376,5 +382,4 @@ def add_match():
 
 
 if __name__ == "__main__":
-    seed()
     app.run(debug=True, host="0.0.0.0", port=5000)

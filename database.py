@@ -1,7 +1,8 @@
 import sqlite3
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "bolao.db")
+IS_VERCEL = os.environ.get("VERCEL") == "1"
+DB_PATH = "/tmp/bolao.db" if IS_VERCEL else os.path.join(os.path.dirname(__file__), "bolao.db")
 
 
 def get_db():
@@ -67,11 +68,5 @@ def init_db():
             value TEXT NOT NULL
         );
     """)
-
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
-    if "is_approved" not in cols:
-        conn.execute("ALTER TABLE users ADD COLUMN is_approved INTEGER DEFAULT 0")
-        conn.commit()
-
     conn.commit()
     conn.close()
