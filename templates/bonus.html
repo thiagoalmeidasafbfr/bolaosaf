@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container">
-    <h1>🎯 Apostas Bônus</h1>
+    <h1>&#127919; Apostas Bonus</h1>
 
     <div class="card">
         <form class="inline-form" method="GET" action="/bonus">
@@ -18,10 +18,10 @@
     {% if user_id %}
     <div class="bonus-grid">
         {% set categories = [
-            ("champion", "🏆 Campeão", "50 pts"),
-            ("runner_up", "🥈 Vice-Campeão", "30 pts"),
-            ("top_scorer", "👟 Artilheiro", "20 pts"),
-            ("surprise_quarter", "🎲 Surpresa nas Quartas", "15 pts")
+            ("champion", "&#127942; Campeao", "50 pts"),
+            ("runner_up", "&#129352; Vice-Campeao", "30 pts"),
+            ("top_scorer", "&#128095; Artilheiro", "20 pts"),
+            ("surprise_quarter", "&#127922; Surpresa nas Quartas", "15 pts")
         ] %}
 
         {% for cat, label, pts in categories %}
@@ -32,7 +32,7 @@
             {% endif %}
             {% set bp = bonus_preds.get(cat) %}
             {% if bp and bp.points_earned is not none %}
-                <p>Sua aposta: <strong>{{ bp.value }}</strong> — <strong class="pts-earned">{{ bp.points_earned }} pts</strong></p>
+                <p>Sua aposta: <strong>{{ bp.value }}</strong> &mdash; <strong class="pts-earned">{{ bp.points_earned }} pts</strong></p>
             {% else %}
                 <form class="bonus-form" data-category="{{ cat }}">
                     {% if cat in ("champion", "runner_up", "surprise_quarter") %}
@@ -53,7 +53,7 @@
     </div>
     {% else %}
     <div class="card">
-        <p class="empty">Selecione seu nome acima para fazer as apostas bônus.</p>
+        <p class="empty">Selecione seu nome acima para fazer as apostas bonus.</p>
     </div>
     {% endif %}
 </div>

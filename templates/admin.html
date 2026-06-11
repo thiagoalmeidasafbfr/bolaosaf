@@ -1,7 +1,52 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container">
-    <h1>🔧 Administração</h1>
+    <h1>&#128295; Administracao</h1>
+
+    <!-- APROVACAO DE PARTICIPANTES -->
+    <div class="card">
+        <h3>&#128101; Participantes Pendentes</h3>
+        {% if pending_users %}
+        <div class="user-list">
+            {% for u in pending_users %}
+            <div class="user-row pending">
+                <span>{{ u.name }}</span>
+                <span class="user-date">{{ u.created_at }}</span>
+                <div class="user-actions">
+                    <button class="btn-approve" data-user="{{ u.id }}">Aprovar</button>
+                    <button class="btn-reject btn-danger" data-user="{{ u.id }}">Recusar</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty-small">Nenhum pedido pendente.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h3>&#9989; Participantes Aprovados ({{ approved_users|length }})</h3>
+        {% if approved_users %}
+        <div class="user-list">
+            {% for u in approved_users %}
+            <div class="user-row">
+                <span>{{ u.name }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty-small">Nenhum participante aprovado ainda.</p>
+        {% endif %}
+    </div>
+
+    <!-- JOGOS POR FASE -->
+    <div class="stage-tabs">
+        {% for s in active_stages %}
+        <a href="/admin?stage={{ s }}" class="tab {% if stage_filter == s %}active{% endif %}">
+            {{ stage_labels.get(s, s) }}
+        </a>
+        {% endfor %}
+    </div>
 
     <div class="card">
         <h3>Adicionar Jogo (Mata-Mata)</h3>
@@ -23,13 +68,13 @@
             </div>
             <div class="form-row">
                 <input type="date" name="match_date" required>
-                <input type="time" name="match_time">
+                <input type="time" name="match_time" required>
                 <select name="stage" required>
                     <option value="round_of_32">32 avos</option>
                     <option value="round_of_16">Oitavas</option>
                     <option value="quarter">Quartas</option>
                     <option value="semi">Semifinal</option>
-                    <option value="third_place">3º Lugar</option>
+                    <option value="third_place">3o Lugar</option>
                     <option value="final">Final</option>
                 </select>
             </div>
@@ -39,15 +84,15 @@
     </div>
 
     <div class="card">
-        <h3>Registrar Resultados</h3>
+        <h3>Registrar Resultados - {{ stage_labels.get(stage_filter, stage_filter) }}</h3>
         {% for m in matches %}
         <div class="admin-match {% if m.is_finished %}finished{% endif %}">
             <span class="match-label">
                 {{ m.home_flag }} {{ m.home_team }} vs {{ m.away_team }} {{ m.away_flag }}
-                <small>({{ m.match_date }})</small>
+                <small>({{ m.match_date }} {{ m.match_time }})</small>
             </span>
             {% if m.is_finished %}
-                <span class="result-badge">{{ m.home_score }} x {{ m.away_score }} ✓</span>
+                <span class="result-badge">{{ m.home_score }} x {{ m.away_score }} &#10003;</span>
             {% else %}
                 <form class="result-form" data-match="{{ m.id }}">
                     <input type="number" name="home_score" min="0" max="20" placeholder="0" required>
@@ -57,22 +102,24 @@
                 </form>
             {% endif %}
         </div>
+        {% else %}
+        <p class="empty-small">Nenhum jogo nesta fase.</p>
         {% endfor %}
     </div>
 
     <div class="card">
-        <h3>Resultados Bônus</h3>
+        <h3>Resultados Bonus</h3>
         {% set bonus_cats = [
-            ("champion", "🏆 Campeão"),
-            ("runner_up", "🥈 Vice-Campeão"),
-            ("top_scorer", "👟 Artilheiro"),
-            ("surprise_quarter", "🎲 Surpresa nas Quartas")
+            ("champion", "&#127942; Campeao"),
+            ("runner_up", "&#129352; Vice-Campeao"),
+            ("top_scorer", "&#128095; Artilheiro"),
+            ("surprise_quarter", "&#127922; Surpresa nas Quartas")
         ] %}
         {% for cat, label in bonus_cats %}
         <div class="admin-match">
             <span class="match-label">{{ label }}</span>
             {% if results.get(cat) %}
-                <span class="result-badge">{{ results[cat] }} ✓</span>
+                <span class="result-badge">{{ results[cat] }} &#10003;</span>
             {% endif %}
             <form class="bonus-result-form" data-category="{{ cat }}">
                 {% if cat in ("champion", "runner_up", "surprise_quarter") %}

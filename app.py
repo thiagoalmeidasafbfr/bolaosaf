@@ -1,14 +1,40 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from datetime import datetime, timedelta, timezone
+
+from flask import Flask, render_template, request, jsonify
 from database import get_db, init_db
-from scoring import calculate_points, BONUS_POINTS
+from scoring import calculate_points, BONUS_POINTS, STAGE_LABELS, STAGE_ORDER
 from seed_data import seed
 
 app = Flask(__name__)
+
+BRT = timezone(timedelta(hours=-3))
 
 
 @app.before_request
 def ensure_db():
     init_db()
+
+
+def now_brt():
+    return datetime.now(BRT)
+
+
+def match_deadline(match_date, match_time):
+    t = match_time or "00:00"
+    dt = datetime.strptime(f"{match_date} {t}", "%Y-%m-%d %H:%M").replace(tzinfo=BRT)
+    return dt - timedelta(hours=1)
+
+
+def is_match_locked(match_date, match_time):
+    return now_brt() >= match_deadline(match_date, match_time)
+
+
+def get_active_stages(conn):
+    rows = conn.execute(
+        "SELECT DISTINCT stage FROM matches ORDER BY match_date"
+    ).fetchall()
+    stages = [r["stage"] for r in rows]
+    return sorted(stages, key=lambda s: STAGE_ORDER.index(s) if s in STAGE_ORDER else 99)
 
 
 # --- PAGES ---
@@ -17,33 +43,49 @@ def ensure_db():
 @app.route("/")
 def index():
     conn = get_db()
-    ranking = conn.execute("""
+    stage_filter = request.args.get("stage", "")
+    active_stages = get_active_stages(conn)
+
+    stage_clause = ""
+    params = []
+    if stage_filter:
+        stage_clause = "AND m.stage = ?"
+        params = [stage_filter]
+
+    ranking = conn.execute(f"""
         SELECT u.id, u.name,
             COALESCE(SUM(p.points_earned), 0) + COALESCE(bp.bonus, 0) AS total_points,
             COUNT(p.id) AS total_preds,
-            SUM(CASE WHEN p.points_earned = 25 THEN 1
-                      WHEN p.points_earned >= 37 THEN 1
-                      ELSE 0 END) AS exact_hits
+            SUM(CASE WHEN p.points_earned IS NOT NULL AND p.points_earned >= 25 THEN 1 ELSE 0 END) AS exact_hits
         FROM users u
         LEFT JOIN predictions p ON p.user_id = u.id
+            LEFT JOIN matches m ON m.id = p.match_id {stage_clause}
         LEFT JOIN (
             SELECT user_id, SUM(COALESCE(points_earned, 0)) AS bonus
             FROM bonus_predictions
             GROUP BY user_id
         ) bp ON bp.user_id = u.id
+        WHERE u.is_approved = 1
         GROUP BY u.id
         ORDER BY total_points DESC
-    """).fetchall()
+    """, params).fetchall()
     conn.close()
-    return render_template("index.html", ranking=ranking)
+    return render_template(
+        "index.html", ranking=ranking, active_stages=active_stages,
+        stage_filter=stage_filter, stage_labels=STAGE_LABELS,
+    )
 
 
 @app.route("/matches")
-def matches():
+def matches_page():
     conn = get_db()
     user_id = request.args.get("user_id", type=int)
+    stage_filter = request.args.get("stage", "group")
+    active_stages = get_active_stages(conn)
 
-    users = conn.execute("SELECT * FROM users ORDER BY name").fetchall()
+    users = conn.execute(
+        "SELECT * FROM users WHERE is_approved = 1 ORDER BY name"
+    ).fetchall()
 
     rows = conn.execute("""
         SELECT m.id, m.match_date, m.match_time, m.stage, m.group_name,
@@ -53,8 +95,15 @@ def matches():
         FROM matches m
         JOIN teams ht ON ht.id = m.home_team_id
         JOIN teams at ON at.id = m.away_team_id
+        WHERE m.stage = ?
         ORDER BY m.match_date, m.match_time
-    """).fetchall()
+    """, (stage_filter,)).fetchall()
+
+    now = now_brt()
+    locked_ids = set()
+    for m in rows:
+        if m["is_finished"] or is_match_locked(m["match_date"], m["match_time"]):
+            locked_ids.add(m["id"])
 
     predictions = {}
     if user_id:
@@ -67,7 +116,10 @@ def matches():
 
     conn.close()
     return render_template(
-        "matches.html", matches=rows, users=users, user_id=user_id, predictions=predictions
+        "matches.html", matches=rows, users=users, user_id=user_id,
+        predictions=predictions, locked_ids=locked_ids,
+        active_stages=active_stages, stage_filter=stage_filter,
+        stage_labels=STAGE_LABELS, now=now,
     )
 
 
@@ -75,7 +127,9 @@ def matches():
 def bonus_page():
     conn = get_db()
     user_id = request.args.get("user_id", type=int)
-    users = conn.execute("SELECT * FROM users ORDER BY name").fetchall()
+    users = conn.execute(
+        "SELECT * FROM users WHERE is_approved = 1 ORDER BY name"
+    ).fetchall()
     teams = conn.execute("SELECT * FROM teams ORDER BY name").fetchall()
 
     bonus_preds = {}
@@ -101,6 +155,9 @@ def bonus_page():
 @app.route("/admin")
 def admin():
     conn = get_db()
+    stage_filter = request.args.get("stage", "group")
+    active_stages = get_active_stages(conn)
+
     rows = conn.execute("""
         SELECT m.id, m.match_date, m.match_time, m.stage, m.group_name,
                m.home_score, m.away_score, m.is_finished,
@@ -109,16 +166,29 @@ def admin():
         FROM matches m
         JOIN teams ht ON ht.id = m.home_team_id
         JOIN teams at ON at.id = m.away_team_id
+        WHERE m.stage = ?
         ORDER BY m.match_date, m.match_time
-    """).fetchall()
+    """, (stage_filter,)).fetchall()
+
     teams = conn.execute("SELECT * FROM teams ORDER BY name").fetchall()
+    pending_users = conn.execute(
+        "SELECT * FROM users WHERE is_approved = 0 ORDER BY created_at"
+    ).fetchall()
+    approved_users = conn.execute(
+        "SELECT * FROM users WHERE is_approved = 1 ORDER BY name"
+    ).fetchall()
 
     results = {}
     for r in conn.execute("SELECT category, value FROM bonus_results").fetchall():
         results[r["category"]] = r["value"]
 
     conn.close()
-    return render_template("admin.html", matches=rows, teams=teams, results=results)
+    return render_template(
+        "admin.html", matches=rows, teams=teams, results=results,
+        pending_users=pending_users, approved_users=approved_users,
+        active_stages=active_stages, stage_filter=stage_filter,
+        stage_labels=STAGE_LABELS,
+    )
 
 
 # --- API ---
@@ -129,14 +199,36 @@ def register():
     data = request.get_json() or request.form
     name = data.get("name", "").strip()
     if not name:
-        return jsonify({"error": "Nome é obrigatório"}), 400
+        return jsonify({"error": "Nome eh obrigatorio"}), 400
     conn = get_db()
     try:
-        conn.execute("INSERT INTO users (name) VALUES (?)", (name,))
+        conn.execute("INSERT INTO users (name, is_approved) VALUES (?, 0)", (name,))
         conn.commit()
     except Exception:
         conn.close()
-        return jsonify({"error": "Nome já existe"}), 409
+        return jsonify({"error": "Nome ja existe"}), 409
+    conn.close()
+    return jsonify({"ok": True, "message": "Cadastro enviado! Aguarde aprovacao do administrador."})
+
+
+@app.route("/api/admin/approve_user", methods=["POST"])
+def approve_user():
+    data = request.get_json() or request.form
+    user_id = int(data["user_id"])
+    conn = get_db()
+    conn.execute("UPDATE users SET is_approved = 1 WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/admin/reject_user", methods=["POST"])
+def reject_user():
+    data = request.get_json() or request.form
+    user_id = int(data["user_id"])
+    conn = get_db()
+    conn.execute("DELETE FROM users WHERE id = ? AND is_approved = 0", (user_id,))
+    conn.commit()
     conn.close()
     return jsonify({"ok": True})
 
@@ -150,13 +242,27 @@ def predict():
     away_score = int(data["away_score"])
 
     if home_score < 0 or away_score < 0:
-        return jsonify({"error": "Placar não pode ser negativo"}), 400
+        return jsonify({"error": "Placar nao pode ser negativo"}), 400
 
     conn = get_db()
-    match = conn.execute("SELECT is_finished FROM matches WHERE id = ?", (match_id,)).fetchone()
-    if match and match["is_finished"]:
+
+    user = conn.execute("SELECT is_approved FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user or not user["is_approved"]:
         conn.close()
-        return jsonify({"error": "Jogo já encerrado, não pode apostar"}), 400
+        return jsonify({"error": "Usuario nao aprovado"}), 403
+
+    match = conn.execute(
+        "SELECT is_finished, match_date, match_time FROM matches WHERE id = ?", (match_id,)
+    ).fetchone()
+    if not match:
+        conn.close()
+        return jsonify({"error": "Jogo nao encontrado"}), 404
+    if match["is_finished"]:
+        conn.close()
+        return jsonify({"error": "Jogo ja encerrado"}), 400
+    if is_match_locked(match["match_date"], match["match_time"]):
+        conn.close()
+        return jsonify({"error": "Apostas encerradas! Fecha 1h antes do jogo."}), 400
 
     conn.execute("""
         INSERT INTO predictions (user_id, match_id, home_score, away_score)
@@ -177,9 +283,14 @@ def bonus_predict():
     value = data["value"].strip()
 
     if category not in BONUS_POINTS:
-        return jsonify({"error": "Categoria inválida"}), 400
+        return jsonify({"error": "Categoria invalida"}), 400
 
     conn = get_db()
+    user = conn.execute("SELECT is_approved FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user or not user["is_approved"]:
+        conn.close()
+        return jsonify({"error": "Usuario nao aprovado"}), 403
+
     conn.execute("""
         INSERT INTO bonus_predictions (user_id, category, value)
         VALUES (?, ?, ?)
@@ -202,7 +313,7 @@ def set_result():
     match = conn.execute("SELECT stage FROM matches WHERE id = ?", (match_id,)).fetchone()
     if not match:
         conn.close()
-        return jsonify({"error": "Jogo não encontrado"}), 404
+        return jsonify({"error": "Jogo nao encontrado"}), 404
 
     conn.execute(
         "UPDATE matches SET home_score = ?, away_score = ?, is_finished = 1 WHERE id = ?",
@@ -229,7 +340,7 @@ def set_bonus_result():
     value = data["value"].strip()
 
     if category not in BONUS_POINTS:
-        return jsonify({"error": "Categoria inválida"}), 400
+        return jsonify({"error": "Categoria invalida"}), 400
 
     conn = get_db()
     conn.execute("""
@@ -256,7 +367,8 @@ def add_match():
     conn = get_db()
     conn.execute(
         "INSERT INTO matches (home_team_id, away_team_id, match_date, match_time, stage, group_name) VALUES (?, ?, ?, ?, ?, ?)",
-        (int(data["home_team_id"]), int(data["away_team_id"]), data["match_date"], data.get("match_time", ""), data["stage"], data.get("group_name", "")),
+        (int(data["home_team_id"]), int(data["away_team_id"]), data["match_date"],
+         data.get("match_time", "00:00"), data["stage"], data.get("group_name", "")),
     )
     conn.commit()
     conn.close()

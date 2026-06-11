@@ -1,4 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
+    // --- REGISTRO ---
     const regForm = document.getElementById("register-form");
     if (regForm) {
         regForm.addEventListener("submit", async (e) => {
@@ -12,9 +13,9 @@ document.addEventListener("DOMContentLoaded", () => {
             });
             const data = await res.json();
             if (res.ok) {
-                msg.textContent = `${name} entrou no bolão!`;
+                msg.textContent = data.message || "Cadastro enviado! Aguarde aprovacao.";
                 msg.className = "msg success";
-                setTimeout(() => location.reload(), 800);
+                document.getElementById("reg-name").value = "";
             } else {
                 msg.textContent = data.error || "Erro ao cadastrar";
                 msg.className = "msg error";
@@ -22,6 +23,33 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // --- APROVACAO / REJEICAO ---
+    document.querySelectorAll(".btn-approve").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            const userId = btn.dataset.user;
+            const res = await fetch("/api/admin/approve_user", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ user_id: userId }),
+            });
+            if (res.ok) location.reload();
+        });
+    });
+
+    document.querySelectorAll(".btn-reject").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+            const userId = btn.dataset.user;
+            if (!confirm("Recusar este participante?")) return;
+            const res = await fetch("/api/admin/reject_user", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ user_id: userId }),
+            });
+            if (res.ok) location.reload();
+        });
+    });
+
+    // --- APOSTAS EM JOGOS ---
     document.querySelectorAll(".predict-form").forEach((form) => {
         form.addEventListener("submit", async (e) => {
             e.preventDefault();
@@ -44,7 +72,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
             if (res.ok) {
                 const btn = form.querySelector("button");
-                btn.textContent = "Salvo ✓";
+                btn.textContent = "Salvo!";
                 setTimeout(() => (btn.textContent = "Atualizar"), 1500);
             } else {
                 alert(data.error || "Erro ao salvar aposta");
@@ -52,6 +80,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
+    // --- APOSTAS BONUS ---
     document.querySelectorAll(".bonus-form").forEach((form) => {
         form.addEventListener("submit", async (e) => {
             e.preventDefault();
@@ -67,12 +96,16 @@ document.addEventListener("DOMContentLoaded", () => {
             });
             if (res.ok) {
                 const btn = form.querySelector("button");
-                btn.textContent = "Salvo ✓";
+                btn.textContent = "Salvo!";
                 setTimeout(() => (btn.textContent = "Atualizar"), 1500);
+            } else {
+                const data = await res.json();
+                alert(data.error || "Erro ao salvar");
             }
         });
     });
 
+    // --- ADMIN: RESULTADOS ---
     document.querySelectorAll(".result-form").forEach((form) => {
         form.addEventListener("submit", async (e) => {
             e.preventDefault();
@@ -90,12 +123,13 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
+    // --- ADMIN: BONUS ---
     document.querySelectorAll(".bonus-result-form").forEach((form) => {
         form.addEventListener("submit", async (e) => {
             e.preventDefault();
             const category = form.dataset.category;
             const value = form.querySelector('[name="value"]').value;
-            if (!confirm(`Definir ${category}: ${value}?`)) return;
+            if (!confirm(`Definir resultado: ${value}?`)) return;
             const res = await fetch("/api/admin/bonus_result", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -106,6 +140,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
+    // --- ADMIN: ADICIONAR JOGO ---
     const addMatchForm = document.getElementById("add-match-form");
     if (addMatchForm) {
         addMatchForm.addEventListener("submit", async (e) => {

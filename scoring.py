@@ -8,6 +8,18 @@ STAGE_MULTIPLIERS = {
     "final": 3.0,
 }
 
+STAGE_LABELS = {
+    "group": "Fase de Grupos",
+    "round_of_32": "32 avos",
+    "round_of_16": "Oitavas de Final",
+    "quarter": "Quartas de Final",
+    "semi": "Semifinais",
+    "third_place": "Disputa 3o Lugar",
+    "final": "Final",
+}
+
+STAGE_ORDER = ["group", "round_of_32", "round_of_16", "quarter", "semi", "third_place", "final"]
+
 BONUS_POINTS = {
     "champion": 50,
     "runner_up": 30,

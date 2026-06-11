@@ -1,15 +1,24 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container">
-    <h1>🏆 Ranking do Bolão</h1>
+    <h1>&#127942; Ranking do Bolao</h1>
 
     <div class="card register-card">
         <h3>Novo Participante</h3>
         <form id="register-form" class="inline-form">
             <input type="text" id="reg-name" placeholder="Nome do participante" required>
-            <button type="submit">Entrar no Bolão</button>
+            <button type="submit">Solicitar Entrada</button>
         </form>
         <p id="reg-msg" class="msg"></p>
+    </div>
+
+    <div class="stage-tabs">
+        <a href="/" class="tab {% if not stage_filter %}active{% endif %}">Geral</a>
+        {% for s in active_stages %}
+        <a href="/?stage={{ s }}" class="tab {% if stage_filter == s %}active{% endif %}">
+            {{ stage_labels.get(s, s) }}
+        </a>
+        {% endfor %}
     </div>
 
     <div class="card">
@@ -26,21 +35,21 @@
             <tbody>
                 {% for r in ranking %}
                 <tr class="{% if loop.index == 1 %}gold{% elif loop.index == 2 %}silver{% elif loop.index == 3 %}bronze{% endif %}">
-                    <td class="pos">{{ loop.index }}º</td>
+                    <td class="pos">{{ loop.index }}o</td>
                     <td>{{ r.name }}</td>
                     <td class="points">{{ r.total_points }}</td>
                     <td>{{ r.total_preds }}</td>
                     <td>{{ r.exact_hits or 0 }}</td>
                 </tr>
                 {% else %}
-                <tr><td colspan="5" class="empty">Nenhum participante ainda. Cadastre-se acima!</td></tr>
+                <tr><td colspan="5" class="empty">Nenhum participante aprovado ainda.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 
     <div class="card scoring-rules">
-        <h3>Critérios de Pontuação</h3>
+        <h3>Criterios de Pontuacao</h3>
         <div class="rules-grid">
             <div class="rule">
                 <span class="rule-pts">25 pts</span>
@@ -64,8 +73,8 @@
             Oitavas x1.5 | Quartas x2 | Semi x2.5 | Final x3
         </p>
         <p class="multiplier-info">
-            <strong>Bônus:</strong>
-            Campeão 50pts | Vice 30pts | Artilheiro 20pts | Surpresa nas Quartas 15pts
+            <strong>Bonus:</strong>
+            Campeao 50pts | Vice 30pts | Artilheiro 20pts | Surpresa nas Quartas 15pts
         </p>
     </div>
 </div>
