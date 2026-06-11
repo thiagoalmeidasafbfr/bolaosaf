@@ -37,7 +37,7 @@ def is_match_locked(match_date, match_time):
 
 def get_active_stages(conn):
     rows = conn.execute(
-        "SELECT DISTINCT stage FROM matches ORDER BY match_date"
+        "SELECT stage, MIN(match_date) AS first_date FROM matches GROUP BY stage ORDER BY first_date"
     ).fetchall()
     stages = [r["stage"] for r in rows]
     return sorted(stages, key=lambda s: STAGE_ORDER.index(s) if s in STAGE_ORDER else 99)
@@ -55,12 +55,12 @@ def index():
     stage_clause = ""
     params = []
     if stage_filter:
-        stage_clause = "AND m.stage = ?"
+        stage_clause = "AND m.stage = %s"
         params = [stage_filter]
 
     ranking = conn.execute(f"""
         SELECT u.id, u.name,
-            COALESCE(SUM(p.points_earned), 0) + COALESCE(bp.bonus, 0) AS total_points,
+            COALESCE(SUM(p.points_earned), 0) + COALESCE(MAX(bp.bonus), 0) AS total_points,
             COUNT(p.id) AS total_preds,
             SUM(CASE WHEN p.points_earned IS NOT NULL AND p.points_earned >= 25 THEN 1 ELSE 0 END) AS exact_hits
         FROM users u
@@ -72,7 +72,7 @@ def index():
             GROUP BY user_id
         ) bp ON bp.user_id = u.id
         WHERE u.is_approved = 1
-        GROUP BY u.id
+        GROUP BY u.id, u.name
         ORDER BY total_points DESC
     """, params).fetchall()
     conn.close()
@@ -101,11 +101,10 @@ def matches_page():
         FROM matches m
         JOIN teams ht ON ht.id = m.home_team_id
         JOIN teams at ON at.id = m.away_team_id
-        WHERE m.stage = ?
+        WHERE m.stage = %s
         ORDER BY m.match_date, m.match_time
     """, (stage_filter,)).fetchall()
 
-    now = now_brt()
     locked_ids = set()
     for m in rows:
         if m["is_finished"] or is_match_locked(m["match_date"], m["match_time"]):
@@ -114,7 +113,7 @@ def matches_page():
     predictions = {}
     if user_id:
         preds = conn.execute(
-            "SELECT match_id, home_score, away_score, points_earned FROM predictions WHERE user_id = ?",
+            "SELECT match_id, home_score, away_score, points_earned FROM predictions WHERE user_id = %s",
             (user_id,),
         ).fetchall()
         for p in preds:
@@ -125,7 +124,7 @@ def matches_page():
         "matches.html", matches=rows, users=users, user_id=user_id,
         predictions=predictions, locked_ids=locked_ids,
         active_stages=active_stages, stage_filter=stage_filter,
-        stage_labels=STAGE_LABELS, now=now,
+        stage_labels=STAGE_LABELS, now=now_brt(),
     )
 
 
@@ -141,7 +140,7 @@ def bonus_page():
     bonus_preds = {}
     if user_id:
         rows = conn.execute(
-            "SELECT category, value, points_earned FROM bonus_predictions WHERE user_id = ?",
+            "SELECT category, value, points_earned FROM bonus_predictions WHERE user_id = %s",
             (user_id,),
         ).fetchall()
         for r in rows:
@@ -172,7 +171,7 @@ def admin():
         FROM matches m
         JOIN teams ht ON ht.id = m.home_team_id
         JOIN teams at ON at.id = m.away_team_id
-        WHERE m.stage = ?
+        WHERE m.stage = %s
         ORDER BY m.match_date, m.match_time
     """, (stage_filter,)).fetchall()
 
@@ -208,7 +207,7 @@ def register():
         return jsonify({"error": "Nome eh obrigatorio"}), 400
     conn = get_db()
     try:
-        conn.execute("INSERT INTO users (name, is_approved) VALUES (?, 0)", (name,))
+        conn.execute("INSERT INTO users (name, is_approved) VALUES (%s, 0)", (name,))
         conn.commit()
     except Exception:
         conn.close()
@@ -222,7 +221,7 @@ def approve_user():
     data = request.get_json() or request.form
     user_id = int(data["user_id"])
     conn = get_db()
-    conn.execute("UPDATE users SET is_approved = 1 WHERE id = ?", (user_id,))
+    conn.execute("UPDATE users SET is_approved = 1 WHERE id = %s", (user_id,))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
@@ -233,7 +232,7 @@ def reject_user():
     data = request.get_json() or request.form
     user_id = int(data["user_id"])
     conn = get_db()
-    conn.execute("DELETE FROM users WHERE id = ? AND is_approved = 0", (user_id,))
+    conn.execute("DELETE FROM users WHERE id = %s AND is_approved = 0", (user_id,))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
@@ -252,13 +251,13 @@ def predict():
 
     conn = get_db()
 
-    user = conn.execute("SELECT is_approved FROM users WHERE id = ?", (user_id,)).fetchone()
+    user = conn.execute("SELECT is_approved FROM users WHERE id = %s", (user_id,)).fetchone()
     if not user or not user["is_approved"]:
         conn.close()
         return jsonify({"error": "Usuario nao aprovado"}), 403
 
     match = conn.execute(
-        "SELECT is_finished, match_date, match_time FROM matches WHERE id = ?", (match_id,)
+        "SELECT is_finished, match_date, match_time FROM matches WHERE id = %s", (match_id,)
     ).fetchone()
     if not match:
         conn.close()
@@ -272,9 +271,9 @@ def predict():
 
     conn.execute("""
         INSERT INTO predictions (user_id, match_id, home_score, away_score)
-        VALUES (?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s)
         ON CONFLICT(user_id, match_id)
-        DO UPDATE SET home_score = excluded.home_score, away_score = excluded.away_score
+        DO UPDATE SET home_score = EXCLUDED.home_score, away_score = EXCLUDED.away_score
     """, (user_id, match_id, home_score, away_score))
     conn.commit()
     conn.close()
@@ -292,16 +291,16 @@ def bonus_predict():
         return jsonify({"error": "Categoria invalida"}), 400
 
     conn = get_db()
-    user = conn.execute("SELECT is_approved FROM users WHERE id = ?", (user_id,)).fetchone()
+    user = conn.execute("SELECT is_approved FROM users WHERE id = %s", (user_id,)).fetchone()
     if not user or not user["is_approved"]:
         conn.close()
         return jsonify({"error": "Usuario nao aprovado"}), 403
 
     conn.execute("""
         INSERT INTO bonus_predictions (user_id, category, value)
-        VALUES (?, ?, ?)
+        VALUES (%s, %s, %s)
         ON CONFLICT(user_id, category)
-        DO UPDATE SET value = excluded.value
+        DO UPDATE SET value = EXCLUDED.value
     """, (user_id, category, value))
     conn.commit()
     conn.close()
@@ -316,23 +315,23 @@ def set_result():
     away_score = int(data["away_score"])
 
     conn = get_db()
-    match = conn.execute("SELECT stage FROM matches WHERE id = ?", (match_id,)).fetchone()
+    match = conn.execute("SELECT stage FROM matches WHERE id = %s", (match_id,)).fetchone()
     if not match:
         conn.close()
         return jsonify({"error": "Jogo nao encontrado"}), 404
 
     conn.execute(
-        "UPDATE matches SET home_score = ?, away_score = ?, is_finished = 1 WHERE id = ?",
+        "UPDATE matches SET home_score = %s, away_score = %s, is_finished = 1 WHERE id = %s",
         (home_score, away_score, match_id),
     )
 
     preds = conn.execute(
-        "SELECT id, home_score, away_score FROM predictions WHERE match_id = ?",
+        "SELECT id, home_score, away_score FROM predictions WHERE match_id = %s",
         (match_id,),
     ).fetchall()
     for p in preds:
         pts = calculate_points(p["home_score"], p["away_score"], home_score, away_score, match["stage"])
-        conn.execute("UPDATE predictions SET points_earned = ? WHERE id = ?", (pts, p["id"]))
+        conn.execute("UPDATE predictions SET points_earned = %s WHERE id = %s", (pts, p["id"]))
 
     conn.commit()
     conn.close()
@@ -350,17 +349,17 @@ def set_bonus_result():
 
     conn = get_db()
     conn.execute("""
-        INSERT INTO bonus_results (category, value) VALUES (?, ?)
-        ON CONFLICT(category) DO UPDATE SET value = excluded.value
+        INSERT INTO bonus_results (category, value) VALUES (%s, %s)
+        ON CONFLICT(category) DO UPDATE SET value = EXCLUDED.value
     """, (category, value))
 
     preds = conn.execute(
-        "SELECT id, user_id, value FROM bonus_predictions WHERE category = ?",
+        "SELECT id, user_id, value FROM bonus_predictions WHERE category = %s",
         (category,),
     ).fetchall()
     for p in preds:
         pts = BONUS_POINTS[category] if p["value"].strip().lower() == value.strip().lower() else 0
-        conn.execute("UPDATE bonus_predictions SET points_earned = ? WHERE id = ?", (pts, p["id"]))
+        conn.execute("UPDATE bonus_predictions SET points_earned = %s WHERE id = %s", (pts, p["id"]))
 
     conn.commit()
     conn.close()
@@ -372,7 +371,7 @@ def add_match():
     data = request.get_json() or request.form
     conn = get_db()
     conn.execute(
-        "INSERT INTO matches (home_team_id, away_team_id, match_date, match_time, stage, group_name) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO matches (home_team_id, away_team_id, match_date, match_time, stage, group_name) VALUES (%s, %s, %s, %s, %s, %s)",
         (int(data["home_team_id"]), int(data["away_team_id"]), data["match_date"],
          data.get("match_time", "00:00"), data["stage"], data.get("group_name", "")),
     )

@@ -1,36 +1,53 @@
-import sqlite3
 import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
-IS_VERCEL = os.environ.get("VERCEL") == "1"
-DB_PATH = "/tmp/bolao.db" if IS_VERCEL else os.path.join(os.path.dirname(__file__), "bolao.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
+
+class PgConnection:
+    def __init__(self, conn):
+        self._conn = conn
+        self._cur = conn.cursor()
+
+    def execute(self, sql, params=None):
+        self._cur.execute(sql, params or ())
+        return self._cur
+
+    def commit(self):
+        self._conn.commit()
+
+    def close(self):
+        self._cur.close()
+        self._conn.close()
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    return PgConnection(conn)
 
 
 def init_db():
     conn = get_db()
-    conn.executescript("""
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,
             is_approved INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
+        )
+    """)
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS teams (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,
             group_name TEXT NOT NULL,
             flag_emoji TEXT DEFAULT ''
-        );
-
+        )
+    """)
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS matches (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             home_team_id INTEGER NOT NULL REFERENCES teams(id),
             away_team_id INTEGER NOT NULL REFERENCES teams(id),
             match_date TEXT NOT NULL,
@@ -40,10 +57,11 @@ def init_db():
             home_score INTEGER DEFAULT NULL,
             away_score INTEGER DEFAULT NULL,
             is_finished INTEGER DEFAULT 0
-        );
-
+        )
+    """)
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS predictions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL REFERENCES users(id),
             match_id INTEGER NOT NULL REFERENCES matches(id),
             home_score INTEGER NOT NULL,
@@ -51,22 +69,24 @@ def init_db():
             points_earned INTEGER DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(user_id, match_id)
-        );
-
+        )
+    """)
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS bonus_predictions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL REFERENCES users(id),
             category TEXT NOT NULL,
             value TEXT NOT NULL,
             points_earned INTEGER DEFAULT NULL,
             UNIQUE(user_id, category)
-        );
-
+        )
+    """)
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS bonus_results (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             category TEXT NOT NULL UNIQUE,
             value TEXT NOT NULL
-        );
+        )
     """)
     conn.commit()
     conn.close()
