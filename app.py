@@ -22,6 +22,19 @@ BRT = timezone(timedelta(hours=-3))
 _db_ready = False
 
 
+def get_conn():
+    if "db" not in g:
+        g.db = get_db()
+    return g.db
+
+
+@app.teardown_appcontext
+def close_conn(exception):
+    db = g.pop("db", None)
+    if db:
+        db.close()
+
+
 @app.before_request
 def before():
     global _db_ready
@@ -33,9 +46,9 @@ def before():
     g.user = None
     uid = session.get("user_id")
     if uid:
-        conn = get_db()
-        g.user = conn.execute("SELECT id, name, email, is_approved, is_admin FROM users WHERE id = %s", (uid,)).fetchone()
-        conn.close()
+        g.user = get_conn().execute(
+            "SELECT id, name, email, is_approved, is_admin FROM users WHERE id = %s", (uid,)
+        ).fetchone()
 
 
 @app.context_processor
@@ -98,9 +111,7 @@ def login_page():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
-        conn = get_db()
-        user = conn.execute("SELECT * FROM users WHERE email = %s", (email,)).fetchone()
-        conn.close()
+        user = get_conn().execute("SELECT * FROM users WHERE email = %s", (email,)).fetchone()
         if user and check_password_hash(user["password_hash"], password):
             session["user_id"] = user["id"]
             if not user["is_approved"]:
@@ -125,10 +136,9 @@ def register_page():
         elif len(password) < 4:
             error = "Senha deve ter pelo menos 4 caracteres."
         else:
-            conn = get_db()
+            conn = get_conn()
             existing = conn.execute("SELECT id FROM users WHERE email = %s", (email,)).fetchone()
             if existing:
-                conn.close()
                 error = "Este e-mail ja esta cadastrado."
             else:
                 conn.execute(
@@ -136,7 +146,6 @@ def register_page():
                     (name, email, generate_password_hash(password)),
                 )
                 conn.commit()
-                conn.close()
                 success = True
     return render_template("register.html", error=error, success=success)
 
@@ -162,7 +171,7 @@ def logout():
 @app.route("/")
 @login_required
 def index():
-    conn = get_db()
+    conn = get_conn()
     stage_filter = request.args.get("stage", "")
     active_stages = get_active_stages(conn)
 
@@ -189,7 +198,6 @@ def index():
         GROUP BY u.id, u.name
         ORDER BY total_points DESC
     """, params).fetchall()
-    conn.close()
     return render_template(
         "index.html", ranking=ranking, active_stages=active_stages,
         stage_filter=stage_filter, stage_labels=STAGE_LABELS,
@@ -199,7 +207,7 @@ def index():
 @app.route("/matches")
 @login_required
 def matches_page():
-    conn = get_db()
+    conn = get_conn()
     user_id = g.user["id"]
     stage_filter = request.args.get("stage", "group")
     active_stages = get_active_stages(conn)
@@ -229,7 +237,6 @@ def matches_page():
     for p in preds:
         predictions[p["match_id"]] = p
 
-    conn.close()
     return render_template(
         "matches.html", matches=rows, user_id=user_id,
         predictions=predictions, locked_ids=locked_ids,
@@ -241,7 +248,7 @@ def matches_page():
 @app.route("/bonus")
 @login_required
 def bonus_page():
-    conn = get_db()
+    conn = get_conn()
     user_id = g.user["id"]
     teams = conn.execute("SELECT * FROM teams ORDER BY name").fetchall()
 
@@ -257,7 +264,6 @@ def bonus_page():
     for r in conn.execute("SELECT category, value FROM bonus_results").fetchall():
         results[r["category"]] = r["value"]
 
-    conn.close()
     return render_template(
         "bonus.html", teams=teams, user_id=user_id,
         bonus_preds=bonus_preds, results=results,
@@ -267,7 +273,7 @@ def bonus_page():
 @app.route("/admin")
 @admin_required
 def admin():
-    conn = get_db()
+    conn = get_conn()
     stage_filter = request.args.get("stage", "group")
     active_stages = get_active_stages(conn)
 
@@ -295,7 +301,6 @@ def admin():
     for r in conn.execute("SELECT category, value FROM bonus_results").fetchall():
         results[r["category"]] = r["value"]
 
-    conn.close()
     return render_template(
         "admin.html", matches=rows, teams=teams, results=results,
         pending_users=pending_users, approved_users=approved_users,
@@ -312,10 +317,9 @@ def admin():
 def approve_user():
     data = request.get_json() or request.form
     user_id = int(data["user_id"])
-    conn = get_db()
+    conn = get_conn()
     conn.execute("UPDATE users SET is_approved = 1 WHERE id = %s", (user_id,))
     conn.commit()
-    conn.close()
     return jsonify({"ok": True})
 
 
@@ -324,10 +328,9 @@ def approve_user():
 def reject_user():
     data = request.get_json() or request.form
     user_id = int(data["user_id"])
-    conn = get_db()
+    conn = get_conn()
     conn.execute("DELETE FROM users WHERE id = %s AND is_approved = 0", (user_id,))
     conn.commit()
-    conn.close()
     return jsonify({"ok": True})
 
 
@@ -352,18 +355,15 @@ def predict():
     if home_score < 0 or away_score < 0:
         return jsonify({"error": "Placar nao pode ser negativo"}), 400
 
-    conn = get_db()
+    conn = get_conn()
     match = conn.execute(
         "SELECT is_finished, match_date, match_time FROM matches WHERE id = %s", (match_id,)
     ).fetchone()
     if not match:
-        conn.close()
         return jsonify({"error": "Jogo nao encontrado"}), 404
     if match["is_finished"]:
-        conn.close()
         return jsonify({"error": "Jogo ja encerrado"}), 400
     if is_match_locked(match["match_date"], match["match_time"]):
-        conn.close()
         return jsonify({"error": "Apostas encerradas! Fecha 1h antes do jogo."}), 400
 
     conn.execute("""
@@ -373,7 +373,6 @@ def predict():
         DO UPDATE SET home_score = EXCLUDED.home_score, away_score = EXCLUDED.away_score
     """, (user_id, match_id, home_score, away_score))
     conn.commit()
-    conn.close()
     return jsonify({"ok": True})
 
 
@@ -388,7 +387,7 @@ def bonus_predict():
     if category not in BONUS_POINTS:
         return jsonify({"error": "Categoria invalida"}), 400
 
-    conn = get_db()
+    conn = get_conn()
     conn.execute("""
         INSERT INTO bonus_predictions (user_id, category, value)
         VALUES (%s, %s, %s)
@@ -396,7 +395,6 @@ def bonus_predict():
         DO UPDATE SET value = EXCLUDED.value
     """, (user_id, category, value))
     conn.commit()
-    conn.close()
     return jsonify({"ok": True})
 
 
@@ -408,10 +406,9 @@ def set_result():
     home_score = int(data["home_score"])
     away_score = int(data["away_score"])
 
-    conn = get_db()
+    conn = get_conn()
     match = conn.execute("SELECT stage FROM matches WHERE id = %s", (match_id,)).fetchone()
     if not match:
-        conn.close()
         return jsonify({"error": "Jogo nao encontrado"}), 404
 
     conn.execute(
@@ -428,7 +425,6 @@ def set_result():
         conn.execute("UPDATE predictions SET points_earned = %s WHERE id = %s", (pts, p["id"]))
 
     conn.commit()
-    conn.close()
     return jsonify({"ok": True})
 
 
@@ -442,7 +438,7 @@ def set_bonus_result():
     if category not in BONUS_POINTS:
         return jsonify({"error": "Categoria invalida"}), 400
 
-    conn = get_db()
+    conn = get_conn()
     conn.execute("""
         INSERT INTO bonus_results (category, value) VALUES (%s, %s)
         ON CONFLICT(category) DO UPDATE SET value = EXCLUDED.value
@@ -457,7 +453,6 @@ def set_bonus_result():
         conn.execute("UPDATE bonus_predictions SET points_earned = %s WHERE id = %s", (pts, p["id"]))
 
     conn.commit()
-    conn.close()
     return jsonify({"ok": True})
 
 
@@ -465,14 +460,13 @@ def set_bonus_result():
 @admin_required
 def add_match():
     data = request.get_json() or request.form
-    conn = get_db()
+    conn = get_conn()
     conn.execute(
         "INSERT INTO matches (home_team_id, away_team_id, match_date, match_time, stage, group_name) VALUES (%s, %s, %s, %s, %s, %s)",
         (int(data["home_team_id"]), int(data["away_team_id"]), data["match_date"],
          data.get("match_time", "00:00"), data["stage"], data.get("group_name", "")),
     )
     conn.commit()
-    conn.close()
     return jsonify({"ok": True})
 
 
