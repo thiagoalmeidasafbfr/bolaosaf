@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h1>📋 Jogos da Copa 2026</h1>
+
+    <div class="card">
+        <form class="inline-form" method="GET" action="/matches">
+            <label>Apostar como:</label>
+            <select name="user_id" onchange="this.form.submit()">
+                <option value="">-- Selecione --</option>
+                {% for u in users %}
+                <option value="{{ u.id }}" {% if user_id == u.id %}selected{% endif %}>{{ u.name }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    {% set current_group = namespace(val='') %}
+    {% for m in matches %}
+        {% if m.group_name != current_group.val and m.stage == 'group' %}
+            {% if current_group.val != '' %}</div>{% endif %}
+            {% set current_group.val = m.group_name %}
+            <h2 class="group-header">Grupo {{ m.group_name }}</h2>
+            <div class="matches-group">
+        {% elif loop.first %}
+            <div class="matches-group">
+        {% endif %}
+
+        <div class="match-card {% if m.is_finished %}finished{% endif %}">
+            <div class="match-date">{{ m.match_date }} {{ m.match_time }}</div>
+            <div class="match-teams">
+                <span class="team home">{{ m.home_flag }} {{ m.home_team }}</span>
+                {% if m.is_finished %}
+                    <span class="score final">{{ m.home_score }} x {{ m.away_score }}</span>
+                {% else %}
+                    <span class="score pending">vs</span>
+                {% endif %}
+                <span class="team away">{{ m.away_team }} {{ m.away_flag }}</span>
+            </div>
+
+            {% if user_id %}
+                {% set pred = predictions.get(m.id) %}
+                {% if m.is_finished and pred %}
+                    <div class="prediction-result">
+                        Sua aposta: {{ pred.home_score }} x {{ pred.away_score }}
+                        — <strong class="pts-earned">{{ pred.points_earned or 0 }} pts</strong>
+                    </div>
+                {% elif not m.is_finished %}
+                    <form class="predict-form" data-match="{{ m.id }}">
+                        <input type="number" name="home_score" min="0" max="20" value="{{ pred.home_score if pred else '' }}" placeholder="0" required>
+                        <span>x</span>
+                        <input type="number" name="away_score" min="0" max="20" value="{{ pred.away_score if pred else '' }}" placeholder="0" required>
+                        <button type="submit">{% if pred %}Atualizar{% else %}Apostar{% endif %}</button>
+                    </form>
+                {% endif %}
+            {% endif %}
+        </div>
+
+        {% if loop.last %}</div>{% endif %}
+    {% endfor %}
+</div>
+{% endblock %}

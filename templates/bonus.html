@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h1>🎯 Apostas Bônus</h1>
+
+    <div class="card">
+        <form class="inline-form" method="GET" action="/bonus">
+            <label>Apostar como:</label>
+            <select name="user_id" onchange="this.form.submit()">
+                <option value="">-- Selecione --</option>
+                {% for u in users %}
+                <option value="{{ u.id }}" {% if user_id == u.id %}selected{% endif %}>{{ u.name }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    {% if user_id %}
+    <div class="bonus-grid">
+        {% set categories = [
+            ("champion", "🏆 Campeão", "50 pts"),
+            ("runner_up", "🥈 Vice-Campeão", "30 pts"),
+            ("top_scorer", "👟 Artilheiro", "20 pts"),
+            ("surprise_quarter", "🎲 Surpresa nas Quartas", "15 pts")
+        ] %}
+
+        {% for cat, label, pts in categories %}
+        <div class="card bonus-card">
+            <h3>{{ label }} <span class="bonus-pts">{{ pts }}</span></h3>
+            {% if results.get(cat) %}
+                <p class="bonus-result">Resultado: <strong>{{ results[cat] }}</strong></p>
+            {% endif %}
+            {% set bp = bonus_preds.get(cat) %}
+            {% if bp and bp.points_earned is not none %}
+                <p>Sua aposta: <strong>{{ bp.value }}</strong> — <strong class="pts-earned">{{ bp.points_earned }} pts</strong></p>
+            {% else %}
+                <form class="bonus-form" data-category="{{ cat }}">
+                    {% if cat in ("champion", "runner_up", "surprise_quarter") %}
+                        <select name="value" required>
+                            <option value="">-- Selecione --</option>
+                            {% for t in teams %}
+                            <option value="{{ t.name }}" {% if bp and bp.value == t.name %}selected{% endif %}>{{ t.flag_emoji }} {{ t.name }}</option>
+                            {% endfor %}
+                        </select>
+                    {% else %}
+                        <input type="text" name="value" placeholder="Nome do jogador" value="{{ bp.value if bp else '' }}" required>
+                    {% endif %}
+                    <button type="submit">{% if bp %}Atualizar{% else %}Apostar{% endif %}</button>
+                </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card">
+        <p class="empty">Selecione seu nome acima para fazer as apostas bônus.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
