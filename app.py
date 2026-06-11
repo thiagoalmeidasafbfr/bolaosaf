@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, request, jsonify
 from database import get_db, init_db
 from scoring import calculate_points, BONUS_POINTS, STAGE_LABELS, STAGE_ORDER
-from seed_data import seed
+from seed_data import seed, force_reseed
 
 app = Flask(__name__)
 
@@ -236,6 +236,14 @@ def reject_user():
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/api/admin/reseed", methods=["POST"])
+def reseed():
+    global _db_ready
+    force_reseed()
+    _db_ready = True
+    return jsonify({"ok": True, "message": "Dados recriados com sucesso."})
 
 
 @app.route("/api/predict", methods=["POST"])

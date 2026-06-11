@@ -1,4 +1,29 @@
 document.addEventListener("DOMContentLoaded", () => {
+    // --- RESEED ---
+    const reseedBtn = document.getElementById("btn-reseed");
+    if (reseedBtn) {
+        reseedBtn.addEventListener("click", async () => {
+            if (!confirm("ATENCAO: Isso apaga TODOS os jogos, times e apostas e recria do zero. Continuar?")) return;
+            const msg = document.getElementById("reseed-msg");
+            reseedBtn.disabled = true;
+            reseedBtn.textContent = "Recriando...";
+            const res = await fetch("/api/admin/reseed", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+            });
+            if (res.ok) {
+                msg.textContent = "Dados recriados com sucesso!";
+                msg.className = "msg success";
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                msg.textContent = "Erro ao recriar dados";
+                msg.className = "msg error";
+                reseedBtn.disabled = false;
+                reseedBtn.textContent = "Recriar Tudo";
+            }
+        });
+    }
+
     // --- REGISTRO ---
     const regForm = document.getElementById("register-form");
     if (regForm) {
